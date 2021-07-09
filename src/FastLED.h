@@ -83,6 +83,7 @@ enum ESPIChipsets {
 enum ESM { SMART_MATRIX };
 enum OWS2811 { OCTOWS2811,OCTOWS2811_400, OCTOWS2813};
 enum SWS2812 { WS2812SERIAL };
+enum ETIChipsets { TLC5948 };
 
 #ifdef HAS_PIXIE
 template<uint8_t DATA_PIN, EOrder RGB_ORDER> class PIXIE : public PixieController<DATA_PIN, RGB_ORDER> {};
@@ -405,6 +406,60 @@ public:
 	}
 #endif
 	//@}
+
+/// @name Adding TI-Latched based controllers
+  //@{
+	/// Add an TI-Latched based  CLEDController instance to the world.
+	/// There are two ways to call this method (as well as the other addLeds)
+	/// variations.  The first is with 2 arguments, in which case the arguments are  a pointer to
+	/// led data, and the number of leds used by this controller.  The second is with 3 arguments, in which case
+	/// the first  argument is the same, the second argument is an offset into the CRGB data where this controller's
+	/// CRGB data begins, and the third argument is the number of leds for this controller object.
+	///
+	/// This method also takes a 2 to 6 template parameters for identifying the specific chipset, data, clock and latch pins,
+	/// RGB ordering, and SPI data rate. The latch pin is required as there is no hardware default.
+	/// @param data - base point to an array of CRGB data structures
+	/// @param nLedsOrOffset - number of leds (3 argument version) or offset into the data array
+	/// @param nLedsIfOffset - number of leds (4 argument version)
+	/// @tparam CHIPSET - the chipset type
+	/// @tparam DATA_PIN - the optional data pin for the leds (if omitted, will default to the first hardware SPI MOSI pin)
+	/// @tparam CLOCK_PIN - the optional clock pin for the leds (if omitted, will default to the first hardware SPI clock pin)
+	/// @tparam LATCH_PIN - the optional latch pin for the leds (cannot be omitted, no standard hardware pins defaults)
+	/// @tparam RGB_ORDER - the rgb ordering for the leds (e.g. what order red, green, and blue data is written out in)
+	/// @tparam SPI_DATA_RATE - the data rate to drive the SPI clock at, defined using DATA_RATE_MHZ or DATA_RATE_KHZ macros
+	/// @returns a reference to the added controller
+	template<ETIChipsets CHIPSET,  uint8_t DATA_PIN, uint8_t CLOCK_PIN, uint8_t LATCH_PIN, EOrder RGB_ORDER, uint32_t SPI_DATA_RATE > CLEDController &addLeds(struct CRGB *data, int nLedsOrOffset, int nLedsIfOffset = 0) {
+		switch(CHIPSET) {
+            case TLC5948: { static TLC5948Controller<DATA_PIN, CLOCK_PIN, LATCH_PIN, RGB_ORDER, SPI_DATA_RATE> c; return addLeds(&c, data, nLedsOrOffset, nLedsIfOffset); }
+		}
+	}
+
+	template<ETIChipsets CHIPSET,  uint8_t DATA_PIN, uint8_t CLOCK_PIN, uint8_t LATCH_PIN, EOrder RGB_ORDER > static CLEDController &addLeds(struct CRGB *data, int nLedsOrOffset, int nLedsIfOffset = 0) {
+		switch(CHIPSET) {
+			case TLC5948: { static TLC5948Controller<DATA_PIN, CLOCK_PIN, LATCH_PIN, RGB_ORDER> c; return addLeds(&c, data, nLedsOrOffset, nLedsIfOffset); }
+		}
+	}
+
+
+	template<ETIChipsets CHIPSET,  uint8_t DATA_PIN, uint8_t CLOCK_PIN, uint8_t LATCH_PIN> static CLEDController &addLeds(struct CRGB *data, int nLedsOrOffset, int nLedsIfOffset = 0) {
+		switch(CHIPSET) {
+			case TLC5948: { static TLC5948Controller<DATA_PIN, CLOCK_PIN, LATCH_PIN> c; return addLeds(&c, data, nLedsOrOffset, nLedsIfOffset); }
+		}
+	}
+
+#ifdef SPI_DATA
+	template<ETIChipsets CHIPSET, uint8_t LATCH_PIN> static CLEDController &addLeds(struct CRGB *data, int nLedsOrOffset, int nLedsIfOffset = 0) {
+		return addLeds<CHIPSET, SPI_DATA, SPI_CLOCK, LATCH_PIN, RGB>(data, nLedsOrOffset, nLedsIfOffset);
+	}
+
+	template<ETIChipsets CHIPSET,uint8_t LATCH_PIN, EOrder RGB_ORDER> static CLEDController &addLeds(struct CRGB *data, int nLedsOrOffset, int nLedsIfOffset = 0) {
+		return addLeds<CHIPSET, SPI_DATA, SPI_CLOCK, LATCH_PIN, RGB_ORDER>(data, nLedsOrOffset, nLedsIfOffset);
+	}
+
+	template<ETIChipsets CHIPSET, uint8_t LATCH_PIN, EOrder RGB_ORDER, uint32_t SPI_DATA_RATE> static CLEDController &addLeds(struct CRGB *data, int nLedsOrOffset, int nLedsIfOffset = 0) {
+		return addLeds<CHIPSET, SPI_DATA, SPI_CLOCK, LATCH_PIN, RGB_ORDER, SPI_DATA_RATE>(data, nLedsOrOffset, nLedsIfOffset);
+	}
+#endif
 
 
 #ifdef FASTLED_HAS_BLOCKLESS

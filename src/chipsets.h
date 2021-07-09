@@ -424,6 +424,113 @@ protected:
 	}
 
 };
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// TLC5948 definition - takes data/clock/latch pin values
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// TLC5948 controller class.
+/// @tparam DATA_PIN the data pin for these leds
+/// @tparam CLOCK_PIN the clock pin for these leds
+/// @tparam LATCH_PIN the latch pin for these leds
+/// @tparam RGB_ORDER the RGB ordering for these leds
+/// @tparam SPI_SPEED the clock divider used for these leds.  Set using the DATA_RATE_MHZ/DATA_RATE_KHZ macros.  Defaults to DATA_RATE_MHZ(33)
+template <uint8_t DATA_PIN, uint8_t CLOCK_PIN, uint8_t LATCH_PIN, EOrder RGB_ORDER = RGB, uint32_t SPI_SPEED = DATA_RATE_MHZ(33)>
+class TLC5948Controller : public CPixelLEDController<RGB_ORDER> {
+	typedef SPIOutput<DATA_PIN, CLOCK_PIN, SPI_SPEED> SPI;
+	SPI mSPI;
+	FastPin<LATCH_PIN> mLatch;
+    bool wroteCtrlData = false;
+	uint8_t ctrlDataBuf[32] = { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+								0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+								0x79,0x7F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+								0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}; // default configuration - max BC brightness, DSPRT mode (auto display) on
+	inline void writeCtrlData(uint16_t numTlcs) {
+		for (int i = 0; i < numTlcs; i++) {
+            mSPI.select();
+			mSPI.template writeBit<0>(1); // write '1' before changes to ctrl buffer
+			mSPI.writeBytes(ctrlDataBuf,32);
+            mSPI.waitFully();
+            mSPI.release();
+		}
+		mLatch.lo();
+		mLatch.hi();
+		mLatch.lo();
+	}
+
+	inline void writeChannel(uint8_t value, uint8_t channelsWritten) {
+		if ((channelsWritten % 16) == 0) {
+			mSPI.template writeBit<0>(0); // write leading '0' to indicate GS buffer data
+		}
+		mSPI.writeByte(value);
+		mSPI.writeByte(0x0); // ignore lower 16 bits
+	}
+
+
+
+	public:
+	TLC5948Controller() {}
+
+	virtual void init() {
+		FastPin<LATCH_PIN>::setOutput();
+		mSPI.init();
+	}
+
+	protected:
+	virtual void showPixels(PixelController<RGB_ORDER> & pixels) {
+		static uint16_t channelPadding = (16 - ((pixels.size()*3) % 16)) % 16; // pad to 16 channels (otherwise chaining won't work)
+		static uint16_t numTlcs = (pixels.size() * 3 % 16 == 0) ? ((pixels.size() * 3) / 16) : ((pixels.size() * 3) / 16) + 1;
+
+		if (!wroteCtrlData) { // only write once
+			writeCtrlData(numTlcs);
+			wroteCtrlData = true;
+		}
+
+		mSPI.select();
+        mSPI.template writeBit<0>(0); // write leading '0' to indicate GS buffer data
+
+		for (int i = 0; i < channelPadding; i++) {
+#ifdef FASTLED_SPI_BYTE_ONLY
+			mSPI.writeByte(0x0);
+			mSPI.writeByte(0x0);
+#else
+			mSPI.writeWord(0x0);
+#endif
+		}
+
+		uint16_t channelsWritten = channelPadding;
+
+		while (pixels.has(1)) {
+			uint8_t p0 = pixels.loadAndScale0(0);
+			writeChannel(p0,channelsWritten);
+			channelsWritten++;
+
+			uint8_t p1 = pixels.loadAndScale1(0);
+			writeChannel(p1,channelsWritten);
+			channelsWritten++;
+
+			uint8_t p2 = pixels.loadAndScale2(0);
+			writeChannel(p2,channelsWritten);
+			channelsWritten++;
+
+			pixels.stepDithering();
+			pixels.advanceData();
+		}
+
+		mLatch.lo();
+		mLatch.hi();
+		mLatch.lo();
+		mSPI.waitFully();
+		mSPI.release();
+	}
+
+};
+
+
+
+
 /// @}
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
